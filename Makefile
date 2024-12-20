@@ -9,11 +9,14 @@ OBJS=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 .PHONY: mkdir all
 
-all: mkdir $(OBJS)
+all: mkdir mkfs $(OBJS)
 	$(CC) $(INCLUDE_DIRS) $(OBJS) -o $(BIN)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(INCLUDE_DIRS) -c $^ -o $@
+
+mkfs:
+	$(CC) $(SRC_DIR)/mkfs.c -o $(BIN_DIR)/mkfs
 
 mkdir:
 	@if [ ! -d bin ]; then mkdir bin; fi
