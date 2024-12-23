@@ -1,5 +1,6 @@
 CC=gcc
 SRC_DIR=./src
+UTILS_DIR=./utils
 BIN_DIR=./bin
 OBJ_DIR=./obj
 INCLUDE_DIRS=-I$(SRC_DIR)
@@ -15,8 +16,9 @@ all: mkdir mkfs $(OBJS)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(INCLUDE_DIRS) -c $^ -o $@
 
-mkfs:
-	$(CC) $(SRC_DIR)/mkfs.c -o $(BIN_DIR)/mkfs
+mkfs: $(OBJ_DIR)/fs.o
+	$(CC) $(INCLUDE_DIRS) $^ $(UTILS_DIR)/mkfs.c -o $(BIN_DIR)/mkfs
+	$(CC) $(INCLUDE_DIRS) $^ $(UTILS_DIR)/fstest.c -o $(BIN_DIR)/fstest
 
 mkdir:
 	@if [ ! -d bin ]; then mkdir bin; fi
