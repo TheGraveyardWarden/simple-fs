@@ -70,6 +70,6 @@ struct dinode
 struct dirent {
 	char name[MAX_DIRNAME];
 	u64 inode; // absolute inode number
-}
+};
 
 #endif /* _FS_H */

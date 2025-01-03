@@ -2,7 +2,7 @@
 #include "core.h"
 #include "fs.h"
 #include "io.h"
-#include "stdlib.h"
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
