@@ -29,7 +29,12 @@ struct inode {
 int inode_alloc(u64*);
 int inode_dealloc(u64);
 int __read_inode(struct group_desc*, u64, struct dinode*);
+int __write_inode(struct group_desc*, u64, const struct dinode*);
 int read_inode(u64, struct inode*);
+int write_inode(u64 ino, struct inode* inode);
+
+int block_alloc(u64*);
+int block_dealloc(u64);
 
 /*
  *

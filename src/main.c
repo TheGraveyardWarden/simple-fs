@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "fs.h"
 #include "io.h"
+#include "file.h"
 
 
 struct superblock *sbp;
@@ -20,6 +21,17 @@ int main() {
   sbp = read_superblock(&dev);
   gd = read_group_desc_table(&dev, sbp);
 
+  u64 blkno;
+
+  block_alloc(&blkno);
+
+  printf("blkno#%ld\n", blkno);
+
+  block_dealloc(blkno);
+
+  block_alloc(&blkno);
+
+  printf("blkno#%ld\n", blkno);
 }
 
 /*

@@ -9,6 +9,7 @@
 #define INODE_RATIO 16384
 #define NDIRECT 15
 #define SB_OFFSET 1024
+#define MAX_DIRNAME 128
 
 struct superblock
 {
@@ -64,5 +65,11 @@ struct dinode
 
 #define IBLOCK(gdi, ino)\
 	((ino * sizeof(struct dinode)) / BLOCK_SIZE) + gdi->inode_table_start
+
+/* maps a name to a inode */
+struct dirent {
+	char name[MAX_DIRNAME];
+	u64 inode; // absolute inode number
+}
 
 #endif /* _FS_H */
