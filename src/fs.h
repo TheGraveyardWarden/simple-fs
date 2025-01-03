@@ -7,6 +7,8 @@
 #define SB_MAX_NAME 20
 #define BLOCK_SIZE  4096
 #define INODE_RATIO 16384
+#define NDIRECT 15
+#define SB_OFFSET 1024
 
 struct superblock
 {
@@ -32,8 +34,8 @@ struct group_desc
 {
   u64 inodes_count;
   u64 blocks_count;
-  u64 block_bitmap;
-  u64 inode_bitmap;
+  u64 block_bitmap; // block_bitmap start
+  u64 inode_bitmap; // inode_bitmap start
   u64 inode_table_start;
   u64 block_start;
   u64 free_blocks_count;
@@ -45,7 +47,22 @@ void group_desc_print(struct group_desc*);
 
 struct dinode
 {
-  char dummy[256];
+  inode_mode_t mode;
+  u16 uid;
+  u16 gid;
+
+  inode_type type;
+
+  u64 created_at;
+  u64 last_modified;
+  u64 last_accessed;
+
+  u64 blocks[NDIRECT+1];
+  u64 blocks_count;
+  u64 size;
 };
+
+#define IBLOCK(gdi, ino)\
+	((ino * sizeof(struct dinode)) / BLOCK_SIZE) + gdi->inode_table_start
 
 #endif /* _FS_H */
