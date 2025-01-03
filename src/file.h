@@ -26,10 +26,10 @@ struct inode {
   u64 block_group;
 };
 
-u64 inode_alloc();
+int inode_alloc(u64*);
 int inode_dealloc(u64);
-void __read_inode(struct group_desc*, u64, struct dinode*);
-void read_inode(u64, struct inode*);
+int __read_inode(struct group_desc*, u64, struct dinode*);
+int read_inode(u64, struct inode*);
 
 /*
  *

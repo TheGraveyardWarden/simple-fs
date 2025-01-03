@@ -19,6 +19,7 @@ int main() {
 
   sbp = read_superblock(&dev);
   gd = read_group_desc_table(&dev, sbp);
+
 }
 
 /*
