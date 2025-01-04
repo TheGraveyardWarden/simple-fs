@@ -34,11 +34,11 @@ int main() {
 	read_inode(0, &inode);
   }
  
-  u64 _ino = 1;
+  u64 _ino = 0;
 
 /*
   struct file file = {
-	.name = "ff",
+	.name = "ffiii",
 	.type = INODE_FILE,
 	.mode = 0b111
   };
@@ -47,28 +47,30 @@ int main() {
 	perror("create()");
 	exit(1);
   }
-  */
-/*
-  if (remove_inode(3) < 0) {
-	printf("remove_inode()\n");
+ */
+
+  int ret;
+  if ((ret = remove_inode(2)) < 0) {
+	printf("remove_inode(): %d\n", ret);
 	exit(1);
   }
-*/
+
 /*
-  char *text = "HALLO HGALLO";
-  if (write_bytes(3, text, strlen(text)) < 0) {
+  char *text = "this";
+  if (write_bytes(2, text, strlen(text)) < 0) {
 	  printf("write_bytes()\n");
 	  exit(1);
   }
-*/
+  */
+
   char *bytes;
   u64 len;
 
-  read_bytes(2, &bytes, &len);
-  printf("read bytes: %s\n", bytes);
+  read_bytes(1, &bytes, &len);
+  printf("read_bytes inode %ld: %s\n", 1, bytes);
   free(bytes);
-  read_bytes(3, &bytes, &len);
-  printf("read bytes: %s\n", bytes);
+  //read_bytes(2, &bytes, &len);
+  //printf("read_bytes inode %ld: %s\n", 2, bytes);
 
   struct file *files, *_file;
   u64 files_count, i;

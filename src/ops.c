@@ -123,11 +123,16 @@ int __remove_file(struct inode *inode) {
 	if (read_inode(inode->parent_inode, &parent_inode) < 0)
 		return -1;
 
-	if (inode_remove_dirent(&parent_inode, inode->ino) < 0)
-		return -1;
+	int ret;
+	if ((ret = inode_remove_dirent(&parent_inode, inode->ino)) < 0) {
+		printf("inode_remove_dirent: %d\n", ret);
+		return -2;
+	}
 
 	for (i = 0; i < inode->blocks_count; i++) {
-		block_dealloc(inode->blocks[i]);
+		if (block_dealloc(inode->blocks[i]) < 0)
+			return -3;
+		printf("deallocated block %ld\n", inode->blocks[i]);
 	}
 
 	inode_dealloc(inode->ino);
