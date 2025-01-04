@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "types.h"
 
+#define DEBUG
 
 #ifdef DEBUG
 #define LOG(...) printf(__VA_ARGS__)

@@ -11,6 +11,8 @@
 #define SB_OFFSET 1024
 #define MAX_DIRNAME 128
 
+#define DIV_CEIL(a, b) ((a) % (b) ? ((a) / (b)) + 1 : (a) / (b))
+
 struct superblock
 {
   u16 magic;
@@ -46,12 +48,12 @@ struct group_desc
 int group_desc_init(struct superblock*, struct group_desc*);
 void group_desc_print(struct group_desc*);
 
+#define INODE_DIR 1
+#define INODE_FILE 2
+
 struct dinode
 {
   inode_mode_t mode;
-  u16 uid;
-  u16 gid;
-
   inode_type type;
 
   u64 created_at;
@@ -61,6 +63,8 @@ struct dinode
   u64 blocks[NDIRECT+1];
   u64 blocks_count;
   u64 size;
+
+  u64 parent_inode;
 };
 
 #define IBLOCK(gdi, ino)\
@@ -70,6 +74,10 @@ struct dinode
 struct dirent {
 	char name[MAX_DIRNAME];
 	u64 inode; // absolute inode number
+	u8 taken;
 };
+
+int dirent_alloc(struct dirent *dirents, struct dirent **dirent);
+void dirent_dealloc(struct dirent *dirent);
 
 #endif /* _FS_H */

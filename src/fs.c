@@ -2,8 +2,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdio.h>
-
-#define DIV_CEIL(a, b) ((a) % (b) ? ((a) / (b)) + 1 : (a) / (b))
+#include "file.h"
 
 #define GROUP_ITABLE_BLOCK_SIZE(sbp)\
   DIV_CEIL(sizeof(struct dinode) * sbp->inodes_per_group, BLOCK_SIZE)
@@ -86,3 +85,23 @@ void group_desc_print(struct group_desc *gd)
   printf("free_blocks_count: %ld\n", gd->free_blocks_count);
   printf("free_inodes_count: %ld\n", gd->free_inodes_count);
 }
+
+int dirent_alloc(struct dirent *dirents, struct dirent **dirent) {
+	struct dirent *dir;
+	u64 i;
+
+	for (dir = dirents, i = 0; i < MAX_DIR_COUNT; i++, dir++) {
+		if (!dir->taken) {
+			dir->taken = 1;
+			*dirent = dir;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+void dirent_dealloc(struct dirent *dirent) {
+	dirent->taken = 0;
+}
+

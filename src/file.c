@@ -5,16 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-
-#define ABS_INODE(raw_ino, idx, ino)\
-	idx = raw_ino / sbp->inodes_per_group;\
-	ino = raw_ino % sbp->inodes_per_group;
-
-#define ABS_BLOCK(raw_blkno, idx, blkno)\
-	idx = raw_blkno / sbp->blocks_per_group;\
-	blkno = raw_blkno % sbp->blocks_per_group;
-
-#define INODE_STRIDE(ino) (ino) * sizeof(struct dinode) % BLOCK_SIZE
+#include <time.h>
 
 extern struct superblock *sbp;
 extern struct group_desc *gd;
@@ -30,7 +21,8 @@ int inode_alloc(u64 *inode) {
 		}
 	}
 
-	exit(1);
+	errno = ENOMEM;
+	return -1;
 
 found:	
 	if (read_block(gdi->inode_bitmap, bitmap) < 0)
@@ -51,13 +43,13 @@ found:
 				gdi->free_inodes_count--;
 				write_group_desc_table(); // no check needed
 
-				*inode += sbp->inodes_per_group * (gdi - gd);
+				INODE_TO_ABS(inode, gdi);
 				return 0;
 			}
 		}
 	}
 
-	exit(1);
+	return -1;
 }
 
 int inode_dealloc(u64 ino) {
@@ -91,7 +83,6 @@ int inode_dealloc(u64 ino) {
 int __read_inode(struct group_desc *gdi, u64 ino, struct dinode *dinode) {
 	u8 blk[BLOCK_SIZE];
 	u64 i;
-	// const u64 stride = ino * sizeof(struct dinode) % BLOCK_SIZE;
 	const u64 stride = INODE_STRIDE(ino);
 
 	if (read_block(IBLOCK(gdi, ino), blk) < 0)
@@ -141,6 +132,7 @@ int read_inode(u64 ino, struct inode *inode) {
 	
 	memcpy(inode, &dinode, sizeof(struct dinode));
 	inode->block_group = gd_idx;
+	inode->ino = ino;
 
 	return 0;
 }
@@ -172,10 +164,8 @@ int block_alloc(u64 *blkno) {
 	return -1;
 
 found:
-	// read block bitmap
 	if (read_block(gdi->block_bitmap, bitmap) < 0)
 		return -1;
-	// find first unallocated block
 
 	for (curr = &bitmap[0]; curr < bitmap + (BLOCK_SIZE - 1); curr++) {
 		if (*curr == 0xff)
@@ -192,7 +182,7 @@ found:
 				gdi->free_blocks_count--;
 				write_group_desc_table(); // no check needed
 
-				*blkno += sbp->blocks_per_group * (gdi - gd);
+				BLOCK_TO_ABS(blkno, gdi);
 				return 0;
 			}
 		}
@@ -218,12 +208,183 @@ int block_dealloc(u64 blkno) {
 		if (write_block(gdi->block_bitmap, bitmap) < 0)
 			return -1;
 
-		gdi->free_inodes_count++;
+		gdi->free_blocks_count++;
 		write_group_desc_table(); // no check
 
 		return 0;
 	}
 
 	return -1;
+}
+
+int dirlookup(u64 base_ino, const char *name, u64 *new_ino) {
+	struct inode base_inode, new_inode;
+	u8 block[BLOCK_SIZE];
+	struct dirent *dirent, *trav_dir;
+	u64 dir_count, i;
+
+	if (read_inode(base_ino, &base_inode) < 0)
+		return -2;
+
+	if (base_inode.type != INODE_DIR)
+		return -3;
+
+	if ((dir_count = DIR_ENTRY_COUNT(&base_inode)) == 0)
+		return -1;
+
+	if (base_inode.blocks_count == 0)
+		return -1;
+
+	if (read_block(base_inode.blocks[0], block) < 0)
+		return -6;
+
+	dirent = (struct dirent*)block;
+	for (trav_dir = dirent, i = 0; i < MAX_DIR_COUNT; trav_dir++, i++) {
+		if (trav_dir->taken && !strncmp(name, trav_dir->name, MAX_DIRNAME))
+		{
+			*new_ino = trav_dir->inode;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+int pathlookup(u64 wd_ino, const char *path, struct inode *inode)
+{
+	char *tmp;
+	u64 ino;
+
+	if (*path++ == '/') wd_ino = ROOT_INO;
+
+	while ((tmp = strchr(path, '/')))
+	{
+		*tmp++ = 0;
+
+		if (dirlookup(wd_ino, path, &wd_ino) < 0)
+			return -1;
+
+		path = tmp;
+	}
+
+	if (dirlookup(wd_ino, path, &ino) < 0)
+		return -1;
+
+	if (read_inode(ino, inode) < 0)
+		return -2;
+
+	return 0;
+}
+
+int inode_is_root(struct inode *inode) {
+	u8 bitmap[BLOCK_SIZE];
+
+	if (inode->ino != 0)
+		return 0;
+
+	if (inode->type != INODE_DIR) // !is_dir
+		return 0;
+
+	if (read_block(gd->inode_bitmap, bitmap) < 0) {
+		perror("inode_is_root: read_block()");
+		exit(1);
+	}
+
+	if (!(bitmap[0] & 0x01)) // !is_allocated
+		return 0;
+
+	return 1;
+}
+
+int inode_add_dirent(struct inode *inode, struct dirent *dirent) {
+	u8 data[BLOCK_SIZE];
+	struct dirent *dirents, *ddirent;
+	u64 dir_count;
+
+	if (inode->type != INODE_DIR) {
+		printf("inode is not dir\n");
+		errno = -EINVAL;
+		return -1;
+	}
+
+	if (inode->blocks_count == 0) {
+		printf("inode has no blocks\n");
+		errno = -ENOMEM;
+		return -1;
+	}
+
+	dir_count = DIR_ENTRY_COUNT(inode);
+	if (dir_count == MAX_DIR_COUNT) {
+		printf("inode max dir\n");
+		errno = -ENOMEM;
+		return -1;
+	}
+
+	if (read_block(inode->blocks[0], data) < 0) {
+		printf("read_block\n");
+		return -2;
+	}
+
+	dirents = (struct dirent*)data;
+
+	if (dirent_alloc(dirents, &ddirent) < 0) {
+		printf("dirent_alloc()\n");
+		return -1;
+	}
+
+	LOG("dirent id: %d\n", ddirent - dirents);
+
+	memcpy(ddirent, dirent, sizeof(struct dirent));
+	ddirent->taken = 1;
+
+	if (write_block(inode->blocks[0], data) < 0) {
+		printf("write_block\n");
+		return -2;
+	}
+
+	inode->size += sizeof(struct dirent);
+	inode->last_accessed = inode->last_modified = time(NULL);
+
+	if (write_inode(inode->ino, inode) < 0) {
+		printf("write_inode\n");
+		return -2;
+	}
+
+	return 0;
+}
+
+int inode_remove_dirent(struct inode *inode, u64 dirent_ino) {
+	u8 data[BLOCK_SIZE];
+	struct dirent *dirent;
+	u64 dir_count, i;
+
+	dir_count = DIR_ENTRY_COUNT(inode);
+	if (dir_count == 0) {
+		return -1;
+	}
+
+	if (read_block(inode->blocks[0], data) < 0) {
+		return -2;
+	}
+
+	dirent = (struct dirent*)data;
+	for (i = 0; i < MAX_DIR_COUNT; i++, dirent++) {
+		if (dirent->inode == dirent_ino) {
+			dirent_dealloc(dirent);
+		}
+	}
+
+	if (write_block(inode->blocks[0], data) < 0)
+		return -1;
+
+	inode->size -= sizeof(struct dirent);
+	inode->last_accessed = inode->last_modified = time(NULL);
+
+	if (write_inode(inode->ino, inode) < 0) {
+		printf("write_inode\n");
+		return -2;
+	}
+
+	return 0;
 }
 
