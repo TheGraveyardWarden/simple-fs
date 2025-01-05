@@ -260,6 +260,12 @@ int write_bytes(u64 ino, char *bytes, u64 len) {
 	if (len > (inode.blocks_count * BLOCK_SIZE)) {
 		more = DIV_CEIL((len - (inode.blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
 
+        if (more + inode.blocks_count >= NDIRECT)
+        {
+          LOG("write_bytes(): block limit\n");
+          return -1;
+        }
+
 		for (i = 0; i < more; i++) {
 			if (block_alloc(&blkno) < 0)
 				return -1;
@@ -270,8 +276,20 @@ int write_bytes(u64 ino, char *bytes, u64 len) {
 		inode.blocks_count += more;
 	}
 
+    u64 tmp = len;
 	for (i = 0; i < inode.blocks_count; i++) {
+      if (tmp > BLOCK_SIZE)
+      {
 		write_block(inode.blocks[i], bytes+(i*BLOCK_SIZE));
+        tmp -= BLOCK_SIZE;
+      }
+      else
+      {
+        char cp[BLOCK_SIZE] = {0};
+        memcpy(cp, bytes+(i*BLOCK_SIZE), tmp);
+        write_block(inode.blocks[i], cp);
+        break;
+      }
 	}
 
 	inode.size = len;
@@ -318,26 +336,38 @@ int read_bytes(u64 ino, char **bytes, u64 *len) {
 
 void file_print(struct file *file)
 {
-  printf("%c%c%c%c\t%s\n", file->type == INODE_DIR ? 'd' : '-', file->mode & 1 << 2 ? 'r' : '-', file->mode & 1 << 1 ? 'w' : '-', file->mode & 1 ? 'x' : '-', file->name);
+  printf("%c%c%c%c\t%ld\t%s\n", file->type == INODE_DIR ? 'd' : '-', file->mode & 1 << 2 ? 'r' : '-', file->mode & 1 << 1 ? 'w' : '-', file->mode & 1 ? 'x' : '-', file->inode, file->name);
 }
 
-int inode_path(struct inode *inode, char *path)
+int inode_path(struct inode *inode, char **path)
 {
-  struct inode *p_inode = inode, *tmp_inode = inode;
+  struct inode p_inode = *inode, tmp_inode = *inode;
   u64 parent_ino;
   struct dirent *dirent;
   u8 data[BLOCK_SIZE];
-  int i, wrote_len = 0, read_len;
+  int i, d = 0, len = 0, size;
+  char *tmp = NULL;
 
-  while ((parent_ino = p_inode->parent_inode) != 0)
+  *path = NULL;
+
+  if (inode->ino == 0)
   {
-    if (read_inode(parent_ino, p_inode) < 0)
+    *path = malloc(2);
+    (*path)[0] = '/';
+    (*path)[1] = 0;
+    return 0;
+  }
+
+  while (p_inode.ino != 0)
+  {
+    parent_ino = p_inode.parent_inode;
+    if (read_inode(parent_ino, &p_inode) < 0)
     {
       LOG("inode_path(): read_inode()\n");
       return -1;
     }
 
-    if (read_block(p_inode->blocks[0], data) < 0)
+    if (read_block(p_inode.blocks[0], data) < 0)
     {
       LOG("inode_path(): read_block()");
       return -1;
@@ -346,27 +376,31 @@ int inode_path(struct inode *inode, char *path)
     dirent = (struct dirent*)data;
     for (i = 0; i < MAX_DIR_COUNT; i++, dirent++)
     {
-      if (dirent->taken && dirent->inode == tmp_inode->ino)
+      if (dirent->taken && dirent->inode == tmp_inode.ino)
       {
-        read_len = strlen(dirent->name);
-        path = realloc(path, wrote_len+read_len+1);
-
-        if (!wrote_len)
-        {
-          strncpy(path, dirent->name, read_len);
-        }
-        else
-        {
-          strncpy(path+read_len, path, wrote_len);
-          strncpy(path, dirent->name, read_len);
-        }
-
-        path[wrote_len+read_len] = 0;
-        wrote_len += read_len;
+        tmp = realloc(tmp, MAX_DIRNAME * ++d);
+        strncpy(tmp+((d-1)*MAX_DIRNAME), dirent->name, MAX_DIRNAME);
+        len += strlen(dirent->name);
         tmp_inode = p_inode;
+        break;
       }
     }
   }
+
+  *path = malloc(len + d + 1);
+  char *_path = *path;
+
+  for (i = d-1; i >= 0; i--)
+  {
+    size = strlen(tmp+(i*MAX_DIRNAME));
+    *_path++ = '/';
+    strncpy(_path, tmp+(i*MAX_DIRNAME), size);
+    _path += size;
+  }
+
+  (*path)[len+d] = 0;
+
+
   return 0;
 }
 

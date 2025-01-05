@@ -19,6 +19,6 @@ int list(u64 dir_ino, struct file **files, u64 *files_count);
 int remove_inode(u64 ino);
 int write_bytes(u64 ino, char *bytes, u64 len);
 int read_bytes(u64 ino, char **bytes, u64 *len);
-int inode_path(struct inode *inode, char *path);
+int inode_path(struct inode *inode, char **path);
 
 #endif

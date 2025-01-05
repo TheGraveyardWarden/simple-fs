@@ -49,15 +49,16 @@ int shell_enter(struct shell *shell)
 
       char *path;
       int err;
-      if ((err = inode_path(&inode, path)) < 0)
+      if ((err = inode_path(&inode, &path)) < 0)
       {
         printf("inode_path(): %d\n", err);
         continue;
       }
-      printf("inode_path success: %s\n", path);
 
-      strncpy(shell->env->cwd, tmp, ENV_CWD_MAX_LEN);
+      strncpy(shell->env->cwd, path, ENV_CWD_MAX_LEN);
       shell->env->cwd_ino = inode.ino;
+
+      free(path);
     }
     else if (!strncmp(cmd, "touch ", 6))
     {
@@ -75,6 +76,8 @@ int shell_enter(struct shell *shell)
         LOG("shell_enter(): create()\n");
         continue;
       }
+
+      printf("created inode: %ld\n", file.inode);
     }
     else if (!strncmp(cmd, "ls ", 3))
     {
@@ -171,8 +174,6 @@ int shell_enter(struct shell *shell)
       tmp += 4;
       tmp[ENV_CWD_MAX_LEN - 1] = 0;
 
-      printf("cwd_ino: %d\n", shell->env->cwd_ino);
-
       struct inode inode;
       int err;
       if ((err = pathlookup(shell->env->cwd_ino, tmp, &inode)) < 0)
@@ -181,7 +182,64 @@ int shell_enter(struct shell *shell)
         continue;
       }
 
-      printf("%d\n", inode.ino);
+      char *data;
+      u64 len;
+      if (read_bytes(inode.ino, &data, &len) < 0)
+      {
+        printf("shell_enter(): read_bytes()\n");
+        continue;
+      }
+
+      data[inode.size] = 0;
+      printf("%s\n", data);
+      free(data);
+    }
+    else if (!strncmp(cmd, "rm ", 3))
+    {
+      tmp = &cmd[0];
+      tmp += 3;
+      tmp[ENV_CWD_MAX_LEN - 1] = 0;
+
+      struct inode inode;
+      if (pathlookup(shell->env->cwd_ino, tmp, &inode) < 0)
+      {
+        printf("shell_enter(): pathlookup()\n");
+        continue;
+      }
+
+      int err;
+      if ((err = remove_inode(inode.ino)) < 0)
+      {
+        printf("shell_enter(): remove_inode(): %d\n", err);
+        continue;
+      }
+    }
+    else if (!strncmp(cmd, "write ", 6))
+    {
+      tmp = &cmd[0];
+      tmp += 6;
+      tmp[ENV_CWD_MAX_LEN - 1] = 0;
+
+      char *data = strchr(tmp, ' ');
+      if (!data)
+      {
+        printf("bad syntax!\n");
+        continue;
+      }
+      *data++ = 0;
+
+      struct inode inode;
+      if (pathlookup(shell->env->cwd_ino, tmp, &inode) < 0)
+      {
+        printf("shell_enter(): pathlookup()\n");
+        continue;
+      }
+
+      if (write_bytes(inode.ino, data, strlen(data)) < 0)
+      {
+        printf("shell_enter(): write_bytes()\n");
+        continue;
+      }
     }
     else
     {
