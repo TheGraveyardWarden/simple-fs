@@ -85,9 +85,14 @@ int shell_enter(struct shell *shell)
       tmp += 3;
       tmp[ENV_CWD_MAX_LEN - 1] = 0;
 
+      char *p = tmp;
+
+      if (tmp[0] == '.' && tmp[1] == 0)
+        p = shell->env->cwd;
+
       struct inode inode;
       int res;
-      if ((res = pathlookup(shell->env->cwd_ino, tmp, &inode)) < 0)
+      if ((res = pathlookup(shell->env->cwd_ino, p, &inode)) < 0)
       {
         LOG("shell_enter(): pathlookup(): %d\n", res);
         continue;
