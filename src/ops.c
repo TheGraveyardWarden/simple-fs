@@ -144,6 +144,16 @@ int __remove_dir(struct inode *inode) {
 	u8 data[BLOCK_SIZE];
 	struct dirent *dirent;
 	u64 i;
+	struct inode parent_inode;
+
+	if (read_inode(inode->parent_inode, &parent_inode) < 0)
+		return -1;
+
+	int ret;
+	if ((ret = inode_remove_dirent(&parent_inode, inode->ino)) < 0) {
+		printf("inode_remove_dirent: %d\n", ret);
+		return -2;
+	}
 
 	if (read_block(inode->blocks[0], data) < 0)
 		return -1;
