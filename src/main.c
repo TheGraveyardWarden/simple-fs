@@ -28,10 +28,11 @@ int main() {
   sbp = read_superblock(&dev);
   gd = read_group_desc_table(&dev, sbp);
 
+  int err;
   read_inode(0, &inode);
   if (!inode_is_root(&inode)) {
-	if (create_root_dir() < 0 ) {
-		printf("corrupted fs\n");
+	if ((err = create_root_dir()) < 0 ) {
+		printf("corrupted fs: %d\n", err);
 		exit(1);
 	}
 	read_inode(0, &inode);

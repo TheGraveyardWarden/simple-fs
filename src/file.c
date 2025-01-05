@@ -26,7 +26,7 @@ int inode_alloc(u64 *inode) {
 
 found:	
 	if (read_block(gdi->inode_bitmap, bitmap) < 0)
-		return -1;
+		return -2;
 
 	for (curr = &bitmap[0]; curr < bitmap + (BLOCK_SIZE - 1); curr++) {
 		if (*curr == 0xff)
@@ -38,7 +38,7 @@ found:
 				*curr |= 1 << i;
 
 				if (write_block(gdi->inode_bitmap, bitmap) < 0)
-					return -1;
+					return -3;
 
 				gdi->free_inodes_count--;
 				write_group_desc_table(); // no check needed
@@ -49,7 +49,7 @@ found:
 		}
 	}
 
-	return -1;
+	return -4;
 }
 
 int inode_dealloc(u64 ino) {
@@ -155,7 +155,7 @@ int block_alloc(u64 *blkno) {
 	u8 bitmap[BLOCK_SIZE], *curr, i;
 	struct group_desc *gdi, *tmp;
 
-	for (gdi = gd; gdi < gd + (sbp->block_groups_count - 1); gdi++) {
+	for (gdi = gd; gdi - gd < (sbp->block_groups_count); gdi++) {
 		if (gdi->free_blocks_count > 0)
 			goto found;
 	}
@@ -165,7 +165,7 @@ int block_alloc(u64 *blkno) {
 
 found:
 	if (read_block(gdi->block_bitmap, bitmap) < 0)
-		return -1;
+		return -2;
 
 	for (curr = &bitmap[0]; curr < bitmap + (BLOCK_SIZE - 1); curr++) {
 		if (*curr == 0xff)
@@ -177,7 +177,7 @@ found:
 				*curr |= 1 << i;
 
 				if (write_block(gdi->block_bitmap, bitmap) < 0)
-					return -1;
+					return -3;
 
 				gdi->free_blocks_count--;
 				write_group_desc_table(); // no check needed

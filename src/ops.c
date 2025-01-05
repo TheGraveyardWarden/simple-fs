@@ -13,7 +13,8 @@ int create_root_dir(void)
 	u64 ino, blkno;
 	struct inode inode;
 
-	if (inode_alloc(&ino) < 0)
+    int err;
+	if ((err = inode_alloc(&ino)) < 0)
 		return -1;
 
 	if (ino != 0)
@@ -25,7 +26,7 @@ int create_root_dir(void)
 	inode.created_at = inode.last_accessed = inode.last_modified = time(NULL);
 	inode.parent_inode = 0;
 
-	if (block_alloc(&blkno) < 0)
+	if ((err = block_alloc(&blkno)) < 0)
 		goto inode;
 
 	inode.blocks_count = 1;
