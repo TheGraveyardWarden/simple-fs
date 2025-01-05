@@ -37,6 +37,7 @@ int main() {
 	read_inode(0, &inode);
   }
 
+
   strncpy(env.cwd, "/\0", 2);
   env.cwd_ino = 0;
   shell.stop = 0;
@@ -47,33 +48,4 @@ int main() {
 
 // TODO:
 // remove is buggy.
-
-/*
-int main() {
-  struct dev dev;
-  struct superblock sb;
-
-  if ((dev.fd = open("./fs", O_RDWR)) < 0)
-  {
-    perror("open()");
-    exit(1);
-  }
-
-  if (lseek(dev.fd, 1024, SEEK_SET) < 0)
-  {
-    perror("lseek()");
-    exit(1);
-  }
-
-  if (read(dev.fd, &sb, sizeof(struct superblock)) < sizeof(struct superblock))
-  {
-    perror("read()");
-    exit(1);
-  }
-
-  inode_alloc(&dev, &sb);
-
-  return 0;
-}
-*/
 
