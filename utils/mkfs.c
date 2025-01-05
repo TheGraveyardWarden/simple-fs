@@ -4,16 +4,8 @@
 #include <string.h>
 #include <fcntl.h>
 #include "fs.h"
+#include "core.h"
 
-#define DEBUG
-
-#ifdef DEBUG
-#define LOG(...) printf(__VA_ARGS__)
-#define LOGF(...) printf(__VA_ARGS__); fflush(stdout)
-#else
-#define LOG(...)
-#define LOGF(...)
-#endif /* DEBUG */
 
 static void usage(const char *prog);
 static void usage_create(const char *prog);

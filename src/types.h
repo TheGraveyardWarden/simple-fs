@@ -11,4 +11,7 @@ typedef unsigned short      u16;
 typedef unsigned int        u32;
 typedef unsigned long long  u64;
 
+typedef u8 inode_mode_t;
+typedef u8 inode_type;
+
 #endif /* _TYPES_H */
