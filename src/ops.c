@@ -210,8 +210,6 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 		return -2;
 	}
 
-	printf("inode->size: %ld\n", inode.size);
-
 	dirent = (struct dirent*)data;
 	for (trav = dirent, i = 0, file_idx = file; i < MAX_DIR_COUNT; trav++, i++, file_idx++) {
 		if (!trav->taken)
@@ -300,5 +298,59 @@ int read_bytes(u64 ino, char **bytes, u64 *len) {
 	}
 
 	return 0;
+}
+
+void file_print(struct file *file)
+{
+  printf("%c%c%c%c\t%s\n", file->type == INODE_DIR ? 'd' : '-', file->mode & 1 << 2 ? 'r' : '-', file->mode & 1 << 1 ? 'w' : '-', file->mode & 1 ? 'x' : '-', file->name);
+}
+
+int inode_path(struct inode *inode, char *path)
+{
+  struct inode *p_inode = inode, *tmp_inode = inode;
+  u64 parent_ino;
+  struct dirent *dirent;
+  u8 data[BLOCK_SIZE];
+  int i, wrote_len = 0, read_len;
+
+  while ((parent_ino = p_inode->parent_inode) != 0)
+  {
+    if (read_inode(parent_ino, p_inode) < 0)
+    {
+      LOG("inode_path(): read_inode()\n");
+      return -1;
+    }
+
+    if (read_block(p_inode->blocks[0], data) < 0)
+    {
+      LOG("inode_path(): read_block()");
+      return -1;
+    }
+
+    dirent = (struct dirent*)data;
+    for (i = 0; i < MAX_DIR_COUNT; i++, dirent++)
+    {
+      if (dirent->taken && dirent->inode == tmp_inode->ino)
+      {
+        read_len = strlen(dirent->name);
+        path = realloc(path, wrote_len+read_len+1);
+
+        if (!wrote_len)
+        {
+          strncpy(path, dirent->name, read_len);
+        }
+        else
+        {
+          strncpy(path+read_len, path, wrote_len);
+          strncpy(path, dirent->name, read_len);
+        }
+
+        path[wrote_len+read_len] = 0;
+        wrote_len += read_len;
+        tmp_inode = p_inode;
+      }
+    }
+  }
+  return 0;
 }
 

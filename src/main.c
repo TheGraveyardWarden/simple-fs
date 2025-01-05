@@ -8,6 +8,7 @@
 #include "io.h"
 #include "file.h"
 #include "ops.h"
+#include "shell.h"
 
 
 struct superblock *sbp;
@@ -16,6 +17,8 @@ struct dev 		  dev;
 
 int main() {
   struct inode inode;
+  struct env env;
+  struct shell shell;
 
   if ((dev.fd = open("./fs", O_RDWR)) < 0) {
     perror("open()");
@@ -33,58 +36,13 @@ int main() {
 	}
 	read_inode(0, &inode);
   }
- 
-  u64 _ino = 1;
 
-/*
-  struct file file = {
-	.name = "ff",
-	.type = INODE_FILE,
-	.mode = 0b111
-  };
+  strncpy(env.cwd, "/\0", 2);
+  env.cwd_ino = 0;
+  shell.stop = 0;
+  shell.env = &env;
 
-  if (create(_ino, &file) < 0) {
-	perror("create()");
-	exit(1);
-  }
-  */
-/*
-  if (remove_inode(3) < 0) {
-	printf("remove_inode()\n");
-	exit(1);
-  }
-*/
-/*
-  char *text = "HALLO HGALLO";
-  if (write_bytes(3, text, strlen(text)) < 0) {
-	  printf("write_bytes()\n");
-	  exit(1);
-  }
-*/
-  char *bytes;
-  u64 len;
-
-  read_bytes(2, &bytes, &len);
-  printf("read bytes: %s\n", bytes);
-  free(bytes);
-  read_bytes(3, &bytes, &len);
-  printf("read bytes: %s\n", bytes);
-
-  struct file *files, *_file;
-  u64 files_count, i;
-
-  if (list(_ino, &files, &files_count) < 0) {
-	perror("list()\n");
-	exit(1);
-  }
-
-  for (_file = files, i = 0; i < files_count; _file++, i++) {
-	printf("name: %s\n", _file->name);
-	printf("type: %d\n", _file->type);
-	printf("mode: %d\n", _file->mode);
-	printf("inode: %ld\n", _file->inode);
-	printf("----------\n");
-  }
+  shell_enter(&shell);
 }
 
 // TODO:
