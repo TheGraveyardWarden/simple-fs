@@ -183,6 +183,8 @@ found:
 				write_group_desc_table(); // no check needed
 
 				BLOCK_TO_ABS(blkno, gdi, tmp);
+        bzero(bitmap, sizeof(bitmap));
+        write_block(*blkno, bitmap);
 				return 0;
 			}
 		}
@@ -223,6 +225,14 @@ int dirlookup(u64 base_ino, const char *name, u64 *new_ino) {
 	struct dirent *dirent, *trav_dir;
 	u64 dir_count, i;
 
+    LOG("dirlookup(%d, %s)\n", base_ino, name);
+
+    if (base_ino == 0 && *name == '/' && *(name+1) == 0)
+    {
+      *new_ino = 0;
+      return 0;
+    }
+
 	if (read_inode(base_ino, &base_inode) < 0)
 		return -2;
 
@@ -255,7 +265,20 @@ int pathlookup(u64 wd_ino, const char *path, struct inode *inode)
 	char *tmp;
 	u64 ino;
 
-	if (*path++ == '/') wd_ino = ROOT_INO;
+    LOG("pathlookup(%d, %s)\n", wd_ino, path);
+
+    if (*path == '/' && *(path+1) == 0)
+    {
+      if (read_inode(0, inode) < 0)
+        return -11;
+      return 0;
+    }
+
+	if (*path == '/')
+    {
+      wd_ino = ROOT_INO;
+      path++;
+    }
 
 	while ((tmp = strchr(path, '/')))
 	{
