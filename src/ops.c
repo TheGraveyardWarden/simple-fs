@@ -223,6 +223,7 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 			continue;
 
 		if (read_inode(trav->inode, &tmp_inode) < 0) {
+			free(file);
 			return -2;
 		}
 

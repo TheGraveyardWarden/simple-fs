@@ -36,9 +36,9 @@ int main() {
  
   u64 _ino = 0;
 
-/*
+
   struct file file = {
-	.name = "ffiii",
+	.name = "file",
 	.type = INODE_FILE,
 	.mode = 0b111
   };
@@ -47,31 +47,42 @@ int main() {
 	perror("create()");
 	exit(1);
   }
- */
 
+/*
   int ret;
-  if ((ret = remove_inode(2)) < 0) {
+  if ((ret = remove_inode(5)) < 0) {
 	printf("remove_inode(): %d\n", ret);
 	exit(1);
   }
-
+*/
 /*
-  char *text = "this";
+  char *text = "33434wefdfdf";
+  printf("strlen(text): %ld\n", strlen(text));
   if (write_bytes(2, text, strlen(text)) < 0) {
 	  printf("write_bytes()\n");
 	  exit(1);
   }
-  */
+*/
+/*
+  struct inode inode2;
+  read_inode(4, &inode2);
 
+  printf("inode: \n");
+  printf("parent_inode: %ld\n", inode2.parent_inode);
+  printf("size: %ld\n", inode2.size);
+  printf("blocks_count: %ld\n", inode2.blocks_count);
+  for (int z = 0; z < inode2.blocks_count; z++) {
+	printf("blockno#1: %ld\n", inode2.blocks[z]);
+  }
+  */
+/*
   char *bytes;
   u64 len;
 
-  read_bytes(1, &bytes, &len);
-  printf("read_bytes inode %ld: %s\n", 1, bytes);
+  read_bytes(2, &bytes, &len);
+  printf("read_bytes: %s\n", bytes);
   free(bytes);
-  //read_bytes(2, &bytes, &len);
-  //printf("read_bytes inode %ld: %s\n", 2, bytes);
-
+*/
   struct file *files, *_file;
   u64 files_count, i;
 
@@ -91,33 +102,4 @@ int main() {
 
 // TODO:
 // remove is buggy.
-
-/*
-int main() {
-  struct dev dev;
-  struct superblock sb;
-
-  if ((dev.fd = open("./fs", O_RDWR)) < 0)
-  {
-    perror("open()");
-    exit(1);
-  }
-
-  if (lseek(dev.fd, 1024, SEEK_SET) < 0)
-  {
-    perror("lseek()");
-    exit(1);
-  }
-
-  if (read(dev.fd, &sb, sizeof(struct superblock)) < sizeof(struct superblock))
-  {
-    perror("read()");
-    exit(1);
-  }
-
-  inode_alloc(&dev, &sb);
-
-  return 0;
-}
-*/
 

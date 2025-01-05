@@ -49,14 +49,24 @@ int pathlookup(u64 wd_ino, const char *path, struct inode *inode);
 	idx = raw_ino / sbp->inodes_per_group;\
 	ino = raw_ino % sbp->inodes_per_group;
 
-#define ABS_BLOCK(raw_blkno, idx, blkno)\
-	blkno -= sbp->block_start;\
-	idx = raw_blkno / sbp->blocks_per_group;\
-	blkno = raw_blkno % sbp->blocks_per_group;
+#define ABS_BLOCK(raw_blkno, idx, blkno, tmp)\
+	for (tmp = gd; (tmp - gd) < sbp->block_groups_count-1; tmp++) {\
+		if (raw_blkno >= tmp->block_start && raw_blkno < (tmp+1)->block_start) {\
+			idx = tmp - gd;\
+			blkno = raw_blkno - tmp->block_start + 1;\
+			break;\
+		}\
+	}\
+	if (raw_blkno >= tmp->block_start && raw_blkno - tmp->block_start <= tmp->blocks_count) {\
+		idx = tmp - gd;\
+		blkno = raw_blkno - tmp->block_start + 1;\
+	}
 
-#define BLOCK_TO_ABS(blkno_p, gdi)\
-	*blkno_p += sbp->blocks_per_group * (gdi - gd);\
-	*blkno_p += sbp->block_start-1;
+#define BLOCK_TO_ABS(blkno_p, gdi, tmp)\
+	*blkno_p += sbp->block_start-1;\
+	for (tmp = gd; tmp < gdi; tmp++) {\
+		*blkno_p += tmp->blocks_count;\
+	}
 
 #define INODE_TO_ABS(inode_p, gdi)\
 	*inode_p += sbp->inodes_per_group * (gdi - gd);

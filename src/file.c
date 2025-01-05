@@ -153,7 +153,7 @@ int write_inode(u64 ino, struct inode* inode) {
 
 int block_alloc(u64 *blkno) {
 	u8 bitmap[BLOCK_SIZE], *curr, i;
-	struct group_desc *gdi;
+	struct group_desc *gdi, *tmp;
 
 	for (gdi = gd; gdi < gd + (sbp->block_groups_count - 1); gdi++) {
 		if (gdi->free_blocks_count > 0)
@@ -182,7 +182,7 @@ found:
 				gdi->free_blocks_count--;
 				write_group_desc_table(); // no check needed
 
-				BLOCK_TO_ABS(blkno, gdi);
+				BLOCK_TO_ABS(blkno, gdi, tmp);
 				return 0;
 			}
 		}
@@ -193,9 +193,9 @@ int block_dealloc(u64 blkno) {
 	u8 gd_idx, *tmp;
 	u64 gd_blkno;
 	u8 bitmap[BLOCK_SIZE];
-	struct group_desc *gdi;
+	struct group_desc *gdi, *gd_tmp;
 
-	ABS_BLOCK(blkno, gd_idx, gd_blkno);
+	ABS_BLOCK(blkno, gd_idx, gd_blkno, gd_tmp);
 	gdi = gd + gd_idx;
 
 	if (read_block(gdi->block_bitmap, bitmap) < 0)
@@ -357,6 +357,7 @@ int inode_remove_dirent(struct inode *inode, u64 dirent_ino) {
 	u8 data[BLOCK_SIZE];
 	struct dirent *dirent;
 	u64 dir_count, i;
+	u8 removed;
 
 	dir_count = DIR_ENTRY_COUNT(inode);
 	if (dir_count == 0) {
@@ -368,10 +369,18 @@ int inode_remove_dirent(struct inode *inode, u64 dirent_ino) {
 	}
 
 	dirent = (struct dirent*)data;
+	removed = 0;
 	for (i = 0; i < MAX_DIR_COUNT; i++, dirent++) {
-		if (dirent->inode == dirent_ino) {
+		if (dirent->taken == 1 && dirent->inode == dirent_ino) {
 			dirent_dealloc(dirent);
+			removed = 1;
+			break;
 		}
+	}
+
+	if (!removed) {
+		LOG("inode not found\n");
+		return -1;
 	}
 
 	if (write_block(inode->blocks[0], data) < 0)
