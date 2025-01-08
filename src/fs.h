@@ -48,8 +48,14 @@ struct group_desc
 int group_desc_init(struct superblock*, struct group_desc*);
 void group_desc_print(struct group_desc*);
 
+// types
 #define INODE_DIR 1
 #define INODE_FILE 2
+
+// modes
+#define INODE_READ (1 << 2)
+#define INODE_WRITE (1 << 1)
+#define INODE_EXEC (1 << 0)
 
 struct dinode
 {

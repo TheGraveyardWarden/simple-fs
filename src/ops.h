@@ -20,5 +20,6 @@ int remove_inode(u64 ino);
 int write_bytes(u64 ino, char *bytes, u64 len);
 int read_bytes(u64 ino, char **bytes, u64 *len);
 int inode_path(struct inode *inode, char **path);
+int ino_path(u64 ino, char **path);
 
 #endif

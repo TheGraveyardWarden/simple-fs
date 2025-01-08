@@ -7,6 +7,7 @@
 #include <strings.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 int create_root_dir(void)
 {
@@ -255,8 +256,15 @@ int write_bytes(u64 ino, char *bytes, u64 len) {
 	if (read_inode(ino, &inode) < 0)
 		return -1;
 
-	if (inode.type != INODE_FILE)
+	if (!(inode.mode & INODE_WRITE)) {
+		errno = -EPERM;
 		return -2;
+	}
+
+	if (inode.type != INODE_FILE) {
+		errno = -EINVAL;
+		return -2;
+	}
 
 	if (len > (inode.blocks_count * BLOCK_SIZE)) {
 		more = DIV_CEIL((len - (inode.blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
@@ -308,8 +316,15 @@ int read_bytes(u64 ino, char **bytes, u64 *len) {
 	if (read_inode(ino, &inode) < 0)
 		return -1;
 
-	if (inode.type != INODE_FILE)
+	if (!(inode.mode & INODE_READ)) {
+		errno = -EPERM;
 		return -2;
+	}
+
+	if (inode.type != INODE_FILE) {
+		errno = -EINVAL;
+		return -2;
+	}
 
 	if (inode.blocks_count == 0)
 		return -1;
@@ -399,9 +414,19 @@ int inode_path(struct inode *inode, char **path)
     _path += size;
   }
 
+	free(tmp);
   (*path)[len+d] = 0;
 
 
   return 0;
+}
+
+int ino_path(u64 ino, char **path) {
+	struct inode inode;
+
+	if (read_inode(ino, &inode) < 0)
+		return -1;
+
+	return inode_path(&inode, path);
 }
 

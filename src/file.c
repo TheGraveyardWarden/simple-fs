@@ -225,13 +225,26 @@ int dirlookup(u64 base_ino, const char *name, u64 *new_ino) {
 	struct dirent *dirent, *trav_dir;
 	u64 dir_count, i;
 
-    LOG("dirlookup(%d, %s)\n", base_ino, name);
+	LOG("dirlookup(%d, %s)\n", base_ino, name);
 
-    if (base_ino == 0 && *name == '/' && *(name+1) == 0)
-    {
-      *new_ino = 0;
-      return 0;
-    }
+	if (base_ino == 0 && *name == '/' && *(name+1) == 0)
+	{
+		*new_ino = 0;
+    return 0;
+  }
+
+	if (!strncmp(name, ".\0", 2)) {
+		*new_ino = base_ino;
+		return 0;
+	}
+
+	if (!strncmp(name, "..\0", 3)) {
+		if (read_inode(base_ino, &new_inode) < 0)
+			return -1;
+
+		*new_ino = new_inode.parent_inode;
+		return 0;
+	}
 
 	if (read_inode(base_ino, &base_inode) < 0)
 		return -2;
@@ -285,13 +298,17 @@ int pathlookup(u64 wd_ino, const char *path, struct inode *inode)
 		*tmp++ = 0;
 
 		if (dirlookup(wd_ino, path, &wd_ino) < 0)
-			return -1;
+			return -3;
 
+next:
 		path = tmp;
 	}
 
-	if (dirlookup(wd_ino, path, &ino) < 0)
-		return -1;
+	if (!(*path)) {
+		ino = wd_ino;
+	}
+	else if (dirlookup(wd_ino, path, &ino) < 0)
+		return -4;
 
 	if (read_inode(ino, inode) < 0)
 		return -2;
