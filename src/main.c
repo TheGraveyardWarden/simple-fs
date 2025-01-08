@@ -47,6 +47,3 @@ int main() {
   shell_enter(&shell);
 }
 
-// TODO:
-// remove is buggy.
-
