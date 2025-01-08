@@ -9,6 +9,35 @@
 #include <stdlib.h>
 #include <errno.h>
 
+int file_init(struct file *file, u64 *wd_ino, char* path, inode_type type, inode_mode_t mode) {
+	char *name;
+	struct inode inode;
+
+	if (wd_ino == NULL || path == NULL) {
+		errno = -EINVAL;
+		return -1;
+	}
+
+	name = strrchr(path, '/');
+	if (name == NULL) {
+		name = path;
+	}
+	else {
+		*name++ = 0;
+
+		if (pathlookup(*wd_ino, path, &inode) < 0)
+			return -2;
+
+		*wd_ino = inode.ino;
+	}
+
+	strncpy(file->name, name, MAX_DIRNAME);
+	file->type = type;
+	file->mode = mode;
+	
+	return 0;
+}
+
 int create_root_dir(void)
 {
 	u64 ino, blkno;
@@ -134,7 +163,6 @@ int __remove_file(struct inode *inode) {
 	for (i = 0; i < inode->blocks_count; i++) {
 		if (block_dealloc(inode->blocks[i]) < 0)
 			return -3;
-		printf("deallocated block %ld\n", inode->blocks[i]);
 	}
 
 	inode_dealloc(inode->ino);
@@ -228,7 +256,7 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 	}
 
 	dirent = (struct dirent*)data;
-	for (trav = dirent, i = 0, file_idx = file; i < MAX_DIR_COUNT; trav++, i++, file_idx++) {
+	for (trav = dirent, i = 0, file_idx = file; i < MAX_DIR_COUNT; trav++, i++) {
 		if (!trav->taken)
 			continue;
 
@@ -241,6 +269,7 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 		file_idx->mode = tmp_inode.mode;
 		file_idx->inode = tmp_inode.ino;
 		strncpy(file_idx->name, trav->name, MAX_DIRNAME);
+		file_idx++;
 	}
 
 	*files = file;
@@ -308,33 +337,29 @@ int write_bytes(u64 ino, char *bytes, u64 len) {
 	return 0;
 }
 
-int read_bytes(u64 ino, char **bytes, u64 *len) {
-	struct inode inode;
+int read_bytes(struct inode *inode, char **bytes, u64 *len) {
 	u64 i, tmp;
 	u8 data[BLOCK_SIZE];
 
-	if (read_inode(ino, &inode) < 0)
-		return -1;
-
-	if (!(inode.mode & INODE_READ)) {
+	if (!(inode->mode & INODE_READ)) {
 		errno = -EPERM;
 		return -2;
 	}
 
-	if (inode.type != INODE_FILE) {
+	if (inode->type != INODE_FILE) {
 		errno = -EINVAL;
 		return -2;
 	}
 
-	if (inode.blocks_count == 0)
+	if (inode->blocks_count == 0)
 		return -1;
 
-	*len = inode.size;
+	*len = inode->size;
 	*bytes = malloc(*len);
 
-	tmp = inode.size;
-	for (i = 0; i < inode.blocks_count; i++) {
-		if (read_block(inode.blocks[i], data) < 0)
+	tmp = inode->size;
+	for (i = 0; i < inode->blocks_count; i++) {
+		if (read_block(inode->blocks[i], data) < 0)
 			return -1;
 
 		if (tmp > BLOCK_SIZE) {
