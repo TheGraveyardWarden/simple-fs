@@ -278,61 +278,77 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 	return 0;
 }
 
-int write_bytes(u64 ino, char *bytes, u64 len) {
-	struct inode inode;
-	u64 more, i, blkno;
+int write_bytes(struct inode *inode, char *bytes, u64 len, char append) {
+	u64 more, i, blkno, nwrite, blk_start, off, j;
+	u8 data[BLOCK_SIZE];
 
-	if (read_inode(ino, &inode) < 0)
-		return -1;
-
-	if (!(inode.mode & INODE_WRITE)) {
+	if (!(inode->mode & INODE_WRITE)) {
 		errno = -EPERM;
 		return -2;
 	}
 
-	if (inode.type != INODE_FILE) {
+	if (inode->type != INODE_FILE) {
 		errno = -EINVAL;
 		return -2;
 	}
 
-	if (len > (inode.blocks_count * BLOCK_SIZE)) {
-		more = DIV_CEIL((len - (inode.blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
+	if (append)
+		len += inode->size;
 
-        if (more + inode.blocks_count >= NDIRECT)
-        {
-          LOG("write_bytes(): block limit\n");
-          return -1;
-        }
+	if (len > (inode->blocks_count * BLOCK_SIZE)) {
+		more = DIV_CEIL((len - (inode->blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
+
+    if (more + inode->blocks_count >= NDIRECT)
+    {
+      printf("write_bytes(): block limit\n");
+      return -1;
+    }
 
 		for (i = 0; i < more; i++) {
 			if (block_alloc(&blkno) < 0)
 				return -1;
 
-			inode.blocks[inode.blocks_count+i] = blkno;
+			inode->blocks[inode->blocks_count+i] = blkno;
 		}
 
-		inode.blocks_count += more;
+		inode->blocks_count += more;
 	}
 
-    u64 tmp = len;
-	for (i = 0; i < inode.blocks_count; i++) {
-      if (tmp > BLOCK_SIZE)
+	if (append) {
+		nwrite = len - inode->size;
+		blk_start = inode->size / BLOCK_SIZE;
+		off 			= inode->size % BLOCK_SIZE;
+	} else {
+		nwrite = len;
+		blk_start = off = 0;
+	}
+
+	for (i = blk_start, j = 0; i < inode->blocks_count; i++, j++) {
+			if (j == 0 && append) {
+				read_block(inode->blocks[blk_start], data);
+				strncpy(data+off, bytes, BLOCK_SIZE - off);
+				bytes += off;
+				write_block(inode->blocks[blk_start], data);
+				continue;
+			}
+
+     	if (nwrite > BLOCK_SIZE)
       {
-		write_block(inode.blocks[i], bytes+(i*BLOCK_SIZE));
-        tmp -= BLOCK_SIZE;
+				write_block(inode->blocks[i], bytes+(i*BLOCK_SIZE));
+        nwrite -= BLOCK_SIZE;
       }
       else
       {
         char cp[BLOCK_SIZE] = {0};
-        memcpy(cp, bytes+(i*BLOCK_SIZE), tmp);
-        write_block(inode.blocks[i], cp);
+        memcpy(cp, bytes+(i*BLOCK_SIZE), nwrite);
+        write_block(inode->blocks[i], cp);
         break;
       }
 	}
 
-	inode.size = len;
-	inode.last_modified = inode.last_accessed = time(NULL);
-	write_inode(ino, &inode);
+	inode->size = len;
+	inode->last_modified = inode->last_accessed = time(NULL);
+	write_inode(inode->ino, inode);
 
 	return 0;
 }
@@ -371,6 +387,8 @@ int read_bytes(struct inode *inode, char **bytes, u64 *len) {
 			break;
 		}
 	}
+
+	inode->last_accessed = time(NULL);
 
 	return 0;
 }

@@ -29,8 +29,10 @@ int ls(struct shell* shell, int argc, char *argv[]) {
 		goto list;
 	}
 
-	if ((ret = pathlookup(CWD, argv[1], &inode)) < 0)
+	if ((ret = pathlookup(CWD, argv[1], &inode)) < 0) {
+		printf("file not found\n");
 		return ret;
+	}
 
 	ino = inode.ino;
 
@@ -62,8 +64,10 @@ int cd(struct shell* shell, int argc, char *argv[]) {
 		return 0;
 	}
 
-	if (pathlookup(CWD, argv[1], &inode) < 0)
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
 		return -1;
+	}
 
 	if (inode_path(&inode, &path) < 0)
 		return -2;
@@ -141,11 +145,14 @@ int cat(struct shell* shell, int argc, char *argv[]) {
 		return -1;
 	}
 
-	if (pathlookup(CWD, argv[1], &inode) < 0)
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
 		return -2;
+	}
 
-	if (read_bytes(&inode, &data, &len) < 0)
+	if (read_bytes(&inode, &data, &len) < 0) {
 		return -3;
+	}
 
 	for (i = 0; i < len; i++)
 		printf("%c", data[i]);
@@ -156,12 +163,180 @@ int cat(struct shell* shell, int argc, char *argv[]) {
 	return 0;
 }
 
-int write(struct shell* shell, int argc, char *argv[]) {
+int _write(struct shell* shell, int argc, char *argv[]) {
+	struct inode inode;
+
+	if (argc < 3) {
+		printf("too few args\n");
+		return -1;
+	}
+
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
+		return -2;
+	}
+
+	if (write_bytes(&inode, argv[2], strlen(argv[2]), 0) < 0) {
+		return -3;
+	}
+
+	return 0;
+}
+
+int append(struct shell* shell, int argc, char *argv[]) {
+	struct inode inode;
+
+	if (argc < 3) {
+		printf("too few args\n");
+		return -1;
+	}
+
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
+		return -2;
+	}
+
+	if (write_bytes(&inode, argv[2], strlen(argv[2]), 1) < 0) {
+		return -3;
+	}
+
 	return 0;
 }
 
 int pwd(struct shell* shell, int argc, char *argv[]) {
 	printf("%s\n", shell->env->cwd);
+	return 0;
+}
+
+int load(struct shell* shell, int argc, char *argv[]) {
+	int fd;
+	struct stat fstat;
+	const ssize_t CHUNK_SZ = 1024;
+	char data[CHUNK_SZ];
+	ssize_t nread;
+	struct inode inode;
+
+	if (argc < 3) {
+		printf("too few args\nusage: load </path/to/host/file> </path/to/file/in/fs>\n");
+		return -1;
+	}
+
+	if ((fd = open(argv[1], O_RDONLY)) < 0) {
+		perror("open()");
+		return -2;
+	}
+
+	if (touch(shell, 2, argv+1) < 0)
+		return -1;
+
+	if (pathlookup(CWD, argv[2], &inode) < 0) {
+		printf("file not found\n");
+		return -3;
+	}
+
+	while ((nread = read(fd, data, CHUNK_SZ)) > 0) {
+		if (write_bytes(&inode, data, nread, 1) < 0) {
+			remove_inode(inode.ino);
+			printf("failed to write\n");
+			return -4;
+		}
+	}
+
+	close(fd);
+
+	return 0;
+}
+
+int dump(struct shell* shell, int argc, char *argv[]) {
+	int fd;
+	struct inode inode;
+	char *data;
+	u64 len;
+
+	if (argc < 3) {
+		printf("too few args\nusage: dump </path/to/file/in/fs> </path/to/host/file>\n");
+		return -1;
+	}
+
+	if ((fd = open(argv[2], O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR)) < 0) {
+		perror("open()");
+		return -2;
+	}
+
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
+		return -3;
+	}
+
+	if (read_bytes(&inode, &data, &len) < 0)
+		return -4;
+
+	if (write(fd, data, len) < 0) {
+		perror("write()");
+		return -5;
+	}
+
+	free(data);
+	close(fd);
+
+	return 0;
+}
+
+int stat(struct shell* shell, int argc, char *argv[]) {
+	struct inode inode;
+
+	if (argc < 2) {
+		printf("too few args\n");
+		return -1;
+	}
+
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
+		return -2;
+	}
+
+	printf("inode: %ld\n", inode.ino);
+	printf("block group: %ld\n", inode.block_group);
+	printf("mode: %c%c%c\n", inode.mode & INODE_READ ? 'r' : '-', inode.mode & INODE_WRITE ? 'w' : '-', inode.mode & INODE_EXEC ? 'x' : '-');
+	printf("type: %s\n", inode.type == INODE_DIR ? "directory" : "file");
+	printf("created at: %ld\n", inode.created_at);
+	printf("last modified: %ld\n", inode.last_modified);
+	printf("last accessed: %ld\n", inode.last_accessed);
+	printf("blocks count: %ld\n", inode.blocks_count);
+	printf("size: %ld\n", inode.size);
+	printf("parent inode: %ld\n", inode.parent_inode);
+
+	return 0;
+}
+
+int chmod(struct shell* shell, int argc, char *argv[]) {
+	struct inode inode;
+	inode_mode_t new_mode;
+
+	if (argc < 3) {
+		printf("too few args\nusage: chmod </path/to/file> <new-mode>\n");
+		return -1;
+	}
+
+	if (pathlookup(CWD, argv[1], &inode) < 0) {
+		printf("file not found\n");
+		return -2;
+	}
+
+	new_mode = atoi(argv[2]);
+
+	if (new_mode > 7 && new_mode < 0) {
+		printf("invalid mode. mode is a number between 0-7 (3 bit rwx)");
+		return -3;
+	}
+
+	inode.mode = new_mode;
+	
+	if (write_inode(inode.ino, &inode) < 0) {
+		printf("something went wrong\n");
+		return -4;
+	}
+
 	return 0;
 }
 
@@ -210,10 +385,25 @@ int main() {
 	cmd_init(&cmd, "cat", cat);
 	shell_register_cmd(&shell, &cmd);
 
-	cmd_init(&cmd, "write", write);
+	cmd_init(&cmd, "write", _write);
+	shell_register_cmd(&shell, &cmd);
+
+	cmd_init(&cmd, "append", append);
 	shell_register_cmd(&shell, &cmd);
 
 	cmd_init(&cmd, "pwd", pwd);
+	shell_register_cmd(&shell, &cmd);
+
+	cmd_init(&cmd, "load", load);
+	shell_register_cmd(&shell, &cmd);
+
+	cmd_init(&cmd, "dump", dump);
+	shell_register_cmd(&shell, &cmd);
+
+	cmd_init(&cmd, "stat", stat);
+	shell_register_cmd(&shell, &cmd);
+
+	cmd_init(&cmd, "chmod", chmod);
 	shell_register_cmd(&shell, &cmd);
 
   shell_enter(&shell);
