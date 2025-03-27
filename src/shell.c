@@ -72,6 +72,9 @@ int split_whitespace(char *input, char *argv[MAX_ARGV]) {
 	do {
 		*tmp++ = 0;
 
+		if (!strlen(tmp))
+			break;
+
 		if (*tmp == ' ')
 			continue;
 
