@@ -209,10 +209,10 @@ int pwd(struct shell* shell, int argc, char *argv[]) {
 }
 
 int load(struct shell* shell, int argc, char *argv[]) {
-	int fd;
+	int fd, err;
 	struct stat fstat;
 	const ssize_t CHUNK_SZ = 1024;
-	char data[CHUNK_SZ];
+	char data[CHUNK_SZ], *saved_filepath;
 	ssize_t nread;
 	struct inode inode;
 
@@ -226,25 +226,44 @@ int load(struct shell* shell, int argc, char *argv[]) {
 		return -2;
 	}
 
-	if (touch(shell, 2, argv+1) < 0)
-		return -1;
+    /* touch uses pathlookup which manipulates path
+     * so we need to save it */
+    if ((saved_filepath = strdup(argv[2])) == NULL) {
+      close(fd);
+      return -5;
+    }
 
-	if (pathlookup(CWD, argv[2], &inode) < 0) {
+    /* touch creates its argv[1] */
+	if (touch(shell, 2, argv+1) < 0) {
+      err = -1;
+      goto free_err;
+    }
+
+	if (pathlookup(CWD, saved_filepath, &inode) < 0) {
 		printf("file not found\n");
-		return -3;
+		err = -3;
+        goto free_err;
 	}
 
 	while ((nread = read(fd, data, CHUNK_SZ)) > 0) {
-		if (write_bytes(&inode, data, nread, 1) < 0) {
+        int wb_ret;
+		if ((wb_ret = write_bytes(&inode, data, nread, 1)) < 0) {
 			remove_inode(inode.ino);
-			printf("failed to write\n");
-			return -4;
+			printf("failed to write: %d\n", wb_ret);
+			err = -4;
+            goto free_err;
 		}
 	}
 
 	close(fd);
+    free(saved_filepath);
 
 	return 0;
+
+free_err:
+    close(fd);
+    free(saved_filepath);
+    return err;
 }
 
 int dump(struct shell* shell, int argc, char *argv[]) {

@@ -101,46 +101,48 @@ int split_whitespace(char *input, char *argv[MAX_ARGV]) {
 }
 
 int shell_enter(struct shell* shell) {
-	char input[INPUT_LEN], *argv[MAX_ARGV], *tmp;
-	int argc, ret;
-	struct cmd *trav;
+  char input[INPUT_LEN], *argv[MAX_ARGV], *tmp;
+  int argc, ret;
+  struct cmd *trav;
 
 
-	while (1) {
+  while (1) {
 loop:
     printf("[user@%s]-[%s] $ ", sbp->name, shell->env->cwd);
     fflush(stdout);
 
-		if (fgets(input, INPUT_LEN, stdin) == NULL) {
-			continue;
-		}
+    memset(argv, 0, MAX_ARGV * sizeof(char *));
 
-		tmp = strchr(input, '\n');
-		*tmp = 0;
-
-		if (!strncmp(input, "exit\0", 5)) {
-			printf("peace ;P\n");
-			break;
-		}
-
-		argc = split_whitespace(input, argv);
-		if (argc < 0) {
-			printf("invalid input\n");
-			continue;
-		}
-
-		list_foreach(&shell->cmds, trav, struct cmd, cmds) {
-			if (!strncmp(argv[0], trav->cmd, CMD_LEN)) {
-				if ((ret = trav->handler(shell, argc, argv)) < 0) {
-					printf("command failed with exit status: %d\n", ret);
-				}
-				goto loop;
-			}
-		}
-
-		printf("%s not found\n", argv[0]);
+	if (fgets(input, INPUT_LEN, stdin) == NULL) {
+		continue;
 	}
 
-	return 0;
+	tmp = strchr(input, '\n');
+	*tmp = 0;
+
+	if (!strncmp(input, "exit\0", 5)) {
+	  printf("peace ;P\n");
+      break;
+	}
+
+	argc = split_whitespace(input, argv);
+	if (argc < 0) {
+		printf("invalid input\n");
+		continue;
+	}
+
+	list_foreach(&shell->cmds, trav, struct cmd, cmds) {
+		if (!strncmp(argv[0], trav->cmd, CMD_LEN)) {
+			if ((ret = trav->handler(shell, argc, argv)) < 0) {
+				printf("command failed with exit status: %d\n", ret);
+			}
+			goto loop;
+	    }
+	}
+
+	printf("%s not found\n", argv[0]);
+  }
+
+  return 0;
 }
 

@@ -283,12 +283,12 @@ int write_bytes(struct inode *inode, char *bytes, u64 len, char append) {
 	u8 data[BLOCK_SIZE];
 
 	if (!(inode->mode & INODE_WRITE)) {
-		errno = -EPERM;
-		return -2;
+		errno = EPERM;
+		return -1;
 	}
 
 	if (inode->type != INODE_FILE) {
-		errno = -EINVAL;
+		errno = EINVAL;
 		return -2;
 	}
 
@@ -301,12 +301,13 @@ int write_bytes(struct inode *inode, char *bytes, u64 len, char append) {
     if (more + inode->blocks_count >= NDIRECT)
     {
       printf("write_bytes(): block limit\n");
-      return -1;
+      errno = ENOMEM;
+      return -3;
     }
 
 		for (i = 0; i < more; i++) {
 			if (block_alloc(&blkno) < 0)
-				return -1;
+				return -4;
 
 			inode->blocks[inode->blocks_count+i] = blkno;
 		}
