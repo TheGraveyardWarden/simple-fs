@@ -22,7 +22,7 @@ struct inode {
   u64 parent_inode;
 
   // ----- mem barrier ------
-  // add new fields belove here
+  // add new fields below here
 
   u64 block_group;
   u64 ino;

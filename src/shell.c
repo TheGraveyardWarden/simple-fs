@@ -1,256 +1,143 @@
 #include "shell.h"
 #include "core.h"
 #include "fs.h"
-#include <string.h>
 #include "file.h"
 #include "ops.h"
+#include "list.h"
+#include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
-#define SHELL_CMD_SZ 512
+#define INPUT_LEN 1024
+#define MAX_ARGV 10
 
 extern struct superblock *sbp;
 
-int shell_enter(struct shell *shell)
-{
-  char cmd[SHELL_CMD_SZ], *tmp;
+int env_init(struct env *env, u64 cwd_ino) {
+	char *cwd;
 
-  while (!shell->stop)
-  {
+	if (ino_path(cwd_ino, &cwd) < 0)
+		return -1;
+
+	strncpy(env->cwd, cwd, ENV_CWD_MAX_LEN);
+	env->cwd_ino = cwd_ino;
+
+	free(cwd);
+
+	return 0;
+}
+
+void cmd_init(struct cmd* cmd, const char* cmd_name, cmd_handler_t handler) {
+	strncpy(cmd->cmd, cmd_name, CMD_LEN);
+	cmd->handler = handler;
+	list_init(&cmd->cmds);
+}
+
+void shell_init(struct shell *shell, struct env *env) {
+	shell->env = env;
+	list_init(&shell->cmds);
+}
+
+int shell_register_cmd(struct shell *shell, struct cmd *cmd) {
+	struct cmd *trav;
+
+	list_foreach(&shell->cmds, trav, struct cmd, cmds) {
+		if (!strncmp(trav->cmd, cmd->cmd, CMD_LEN)) {
+			errno = -EEXIST;
+			return -1;
+		}
+	}
+
+	if ((trav = malloc(sizeof(struct cmd))) == NULL)
+		return -1;
+
+	memcpy(trav, cmd, sizeof(struct cmd));
+
+	list_add(&shell->cmds, &trav->cmds);
+	return 0;
+}
+
+// returns < 0 on err
+// on success returns argc
+int split_whitespace(char *input, char *argv[MAX_ARGV]) {
+	char *tmp, *tmp2;
+	int i = 0;
+
+	argv[i++] = input;
+
+	tmp = strchr(input, ' ');
+	if (!tmp)
+		return i;
+
+	do {
+		*tmp++ = 0;
+
+		if (*tmp == ' ')
+			continue;
+
+		if (i == MAX_ARGV)
+			break;
+
+		if (*tmp == '"') {
+			tmp++;
+			tmp2 = strchr(tmp, '"');
+
+			if (!tmp2)
+				return -2;
+
+			*tmp2++ = 0;
+			argv[i++] = tmp;
+			tmp = tmp2;
+			continue;
+		}
+
+		argv[i++] = tmp;
+	} while((tmp = strchr(tmp, ' ')) != NULL);
+
+	return i;
+}
+
+int shell_enter(struct shell* shell) {
+	char input[INPUT_LEN], *argv[MAX_ARGV], *tmp;
+	int argc, ret;
+	struct cmd *trav;
+
+
+	while (1) {
+loop:
     printf("[user@%s]-[%s] $ ", sbp->name, shell->env->cwd);
     fflush(stdout);
 
-    if (fgets(cmd, SHELL_CMD_SZ, stdin) == 0)
-    {
-      LOG("shell_enter(): fgets()\n");
-      return -1;
-    }
-    tmp = strchr(cmd, '\n');
-    *tmp = 0;
+		if (fgets(input, INPUT_LEN, stdin) == NULL) {
+			continue;
+		}
 
-    if (!strncmp(cmd, "cd ", 3))
-    {
-      tmp = &cmd[0];
-      tmp += 3;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
+		tmp = strchr(input, '\n');
+		*tmp = 0;
 
-      struct inode inode;
-      int res;
-      if ((res = pathlookup(shell->env->cwd_ino, tmp, &inode)) < 0)
-      {
-        LOG("shell_enter(): pathlookup(): %d\n", res);
-        continue;
-      }
+		if (!strncmp(input, "exit\0", 5)) {
+			printf("peace ;P\n");
+			break;
+		}
 
-      if (inode.type != INODE_DIR)
-      {
-        printf("path should be a directory\n");
-        continue;
-      }
+		argc = split_whitespace(input, argv);
+		if (argc < 0) {
+			printf("invalid input\n");
+			continue;
+		}
 
-      char *path;
-      int err;
-      if ((err = inode_path(&inode, &path)) < 0)
-      {
-        printf("inode_path(): %d\n", err);
-        continue;
-      }
+		list_foreach(&shell->cmds, trav, struct cmd, cmds) {
+			if (!strncmp(argv[0], trav->cmd, CMD_LEN)) {
+				if ((ret = trav->handler(shell, argc, argv)) < 0) {
+					printf("command failed with exit status: %d\n", ret);
+				}
+				goto loop;
+			}
+		}
 
-      strncpy(shell->env->cwd, path, ENV_CWD_MAX_LEN);
-      shell->env->cwd_ino = inode.ino;
+		printf("%s not found\n", argv[0]);
+	}
 
-      free(path);
-    }
-    else if (!strncmp(cmd, "touch ", 6))
-    {
-      tmp = &cmd[0];
-      tmp += 6;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      struct file file;
-      file.type = INODE_FILE;
-      file.mode = 0b00000111;
-      strncpy(file.name, tmp, MAX_DIRNAME);
-
-      if (create(shell->env->cwd_ino, &file) < 0)
-      {
-        LOG("shell_enter(): create()\n");
-        continue;
-      }
-
-      printf("created inode: %ld\n", file.inode);
-    }
-    else if (!strncmp(cmd, "ls ", 3))
-    {
-      tmp = &cmd[0];
-      tmp += 3;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      char *p = tmp;
-
-      if (tmp[0] == '.' && tmp[1] == 0)
-        p = shell->env->cwd;
-
-      struct inode inode;
-      int res;
-      if ((res = pathlookup(shell->env->cwd_ino, p, &inode)) < 0)
-      {
-        LOG("shell_enter(): pathlookup(): %d\n", res);
-        continue;
-      }
-
-      if (inode.type != INODE_DIR)
-      {
-        printf("path should be a directory\n");
-        continue;
-      }
-
-      struct file *files;
-      u64 files_len;
-      if (list(inode.ino, &files, &files_len) < 0) 
-      {
-        LOG("shell_enter(): list()\n");
-        continue;
-      }
-
-      for (int _i = 0; _i < files_len; _i++)
-      {
-        file_print(&files[_i]);
-      }
-
-      free(files);
-    }
-    else if (!strncmp(cmd, "mkdir ", 6))
-    {
-      tmp = &cmd[0];
-      tmp += 6;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      struct file file;
-      file.type = INODE_DIR;
-      file.mode = 0b00000111;
-      strncpy(file.name, tmp, MAX_DIRNAME);
-
-      if (create(shell->env->cwd_ino, &file) < 0)
-      {
-        printf("mkdir failed\n");
-        LOG("shell_enter(): create()\n");
-        continue;
-      }
-    }
-    else if (!strncmp(cmd, "pwd\0", 4))
-    {
-      printf("%s\n", shell->env->cwd);
-    }
-    else if (!strncmp(cmd, "chmod ", 6))
-    {
-      tmp = &cmd[0];
-      tmp += 6;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      char *filename = strchr(tmp, ' ');
-      if (!filename)
-      {
-        printf("bad syntax!\n");
-        continue;
-      }
-      *filename++ = 0;
-
-      int mode = atoi(tmp);
-      if (mode > 7 || mode < 0)
-      {
-        printf("%d is not a valid mode\n", mode);
-        continue;
-      }
-
-      struct inode inode;
-      if (pathlookup(shell->env->cwd_ino, filename, &inode) < 0)
-      {
-        printf("%s is not a file or directory\n", filename);
-        continue;
-      }
-
-      inode.mode = mode;
-
-      write_inode(inode.ino, &inode);
-    }
-    else if (!strncmp(cmd, "cat ", 4))
-    {
-      tmp = &cmd[0];
-      tmp += 4;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      struct inode inode;
-      int err;
-      if ((err = pathlookup(shell->env->cwd_ino, tmp, &inode)) < 0)
-      {
-        printf("pathlookup(): %d\n", err);
-        continue;
-      }
-
-      char *data;
-      u64 len;
-      if (read_bytes(inode.ino, &data, &len) < 0)
-      {
-        printf("shell_enter(): read_bytes()\n");
-        continue;
-      }
-
-      data[inode.size] = 0;
-      printf("%s\n", data);
-      free(data);
-    }
-    else if (!strncmp(cmd, "rm ", 3))
-    {
-      tmp = &cmd[0];
-      tmp += 3;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      struct inode inode;
-      if (pathlookup(shell->env->cwd_ino, tmp, &inode) < 0)
-      {
-        printf("shell_enter(): pathlookup()\n");
-        continue;
-      }
-
-      int err;
-      if ((err = remove_inode(inode.ino)) < 0)
-      {
-        printf("shell_enter(): remove_inode(): %d\n", err);
-        continue;
-      }
-    }
-    else if (!strncmp(cmd, "write ", 6))
-    {
-      tmp = &cmd[0];
-      tmp += 6;
-      tmp[ENV_CWD_MAX_LEN - 1] = 0;
-
-      char *data = strchr(tmp, ' ');
-      if (!data)
-      {
-        printf("bad syntax!\n");
-        continue;
-      }
-      *data++ = 0;
-
-      struct inode inode;
-      if (pathlookup(shell->env->cwd_ino, tmp, &inode) < 0)
-      {
-        printf("shell_enter(): pathlookup()\n");
-        continue;
-      }
-
-      if (write_bytes(inode.ino, data, strlen(data)) < 0)
-      {
-        printf("shell_enter(): write_bytes()\n");
-        continue;
-      }
-    }
-    else
-    {
-      printf("command not found!\n");
-    }
-  }
-
-  return 0;
+	return 0;
 }
+

@@ -7,6 +7,36 @@
 #include <strings.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
+
+int file_init(struct file *file, u64 *wd_ino, char* path, inode_type type, inode_mode_t mode) {
+	char *name;
+	struct inode inode;
+
+	if (wd_ino == NULL || path == NULL) {
+		errno = -EINVAL;
+		return -1;
+	}
+
+	name = strrchr(path, '/');
+	if (name == NULL) {
+		name = path;
+	}
+	else {
+		*name++ = 0;
+
+		if (pathlookup(*wd_ino, path, &inode) < 0)
+			return -2;
+
+		*wd_ino = inode.ino;
+	}
+
+	strncpy(file->name, name, MAX_DIRNAME);
+	file->type = type;
+	file->mode = mode;
+	
+	return 0;
+}
 
 int create_root_dir(void)
 {
@@ -133,7 +163,6 @@ int __remove_file(struct inode *inode) {
 	for (i = 0; i < inode->blocks_count; i++) {
 		if (block_dealloc(inode->blocks[i]) < 0)
 			return -3;
-		printf("deallocated block %ld\n", inode->blocks[i]);
 	}
 
 	inode_dealloc(inode->ino);
@@ -227,7 +256,7 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 	}
 
 	dirent = (struct dirent*)data;
-	for (trav = dirent, i = 0, file_idx = file; i < MAX_DIR_COUNT; trav++, i++, file_idx++) {
+	for (trav = dirent, i = 0, file_idx = file; i < MAX_DIR_COUNT; trav++, i++) {
 		if (!trav->taken)
 			continue;
 
@@ -240,6 +269,7 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 		file_idx->mode = tmp_inode.mode;
 		file_idx->inode = tmp_inode.ino;
 		strncpy(file_idx->name, trav->name, MAX_DIRNAME);
+		file_idx++;
 	}
 
 	*files = file;
@@ -248,78 +278,104 @@ int list(u64 dir_ino, struct file **files, u64 *files_count) {
 	return 0;
 }
 
-int write_bytes(u64 ino, char *bytes, u64 len) {
-	struct inode inode;
-	u64 more, i, blkno;
+int write_bytes(struct inode *inode, char *bytes, u64 len, char append) {
+	u64 more, i, blkno, nwrite, blk_start, off, j;
+	u8 data[BLOCK_SIZE];
 
-	if (read_inode(ino, &inode) < 0)
-		return -1;
-
-	if (inode.type != INODE_FILE)
+	if (!(inode->mode & INODE_WRITE)) {
+		errno = -EPERM;
 		return -2;
+	}
 
-	if (len > (inode.blocks_count * BLOCK_SIZE)) {
-		more = DIV_CEIL((len - (inode.blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
+	if (inode->type != INODE_FILE) {
+		errno = -EINVAL;
+		return -2;
+	}
 
-        if (more + inode.blocks_count >= NDIRECT)
-        {
-          LOG("write_bytes(): block limit\n");
-          return -1;
-        }
+	if (append)
+		len += inode->size;
+
+	if (len > (inode->blocks_count * BLOCK_SIZE)) {
+		more = DIV_CEIL((len - (inode->blocks_count * BLOCK_SIZE)), BLOCK_SIZE);
+
+    if (more + inode->blocks_count >= NDIRECT)
+    {
+      printf("write_bytes(): block limit\n");
+      return -1;
+    }
 
 		for (i = 0; i < more; i++) {
 			if (block_alloc(&blkno) < 0)
 				return -1;
 
-			inode.blocks[inode.blocks_count+i] = blkno;
+			inode->blocks[inode->blocks_count+i] = blkno;
 		}
 
-		inode.blocks_count += more;
+		inode->blocks_count += more;
 	}
 
-    u64 tmp = len;
-	for (i = 0; i < inode.blocks_count; i++) {
-      if (tmp > BLOCK_SIZE)
+	if (append) {
+		nwrite = len - inode->size;
+		blk_start = inode->size / BLOCK_SIZE;
+		off 			= inode->size % BLOCK_SIZE;
+	} else {
+		nwrite = len;
+		blk_start = off = 0;
+	}
+
+	for (i = blk_start, j = 0; i < inode->blocks_count; i++, j++) {
+			if (j == 0 && append) {
+				read_block(inode->blocks[blk_start], data);
+				strncpy(data+off, bytes, BLOCK_SIZE - off);
+				bytes += off;
+				write_block(inode->blocks[blk_start], data);
+				continue;
+			}
+
+     	if (nwrite > BLOCK_SIZE)
       {
-		write_block(inode.blocks[i], bytes+(i*BLOCK_SIZE));
-        tmp -= BLOCK_SIZE;
+				write_block(inode->blocks[i], bytes+(i*BLOCK_SIZE));
+        nwrite -= BLOCK_SIZE;
       }
       else
       {
         char cp[BLOCK_SIZE] = {0};
-        memcpy(cp, bytes+(i*BLOCK_SIZE), tmp);
-        write_block(inode.blocks[i], cp);
+        memcpy(cp, bytes+(i*BLOCK_SIZE), nwrite);
+        write_block(inode->blocks[i], cp);
         break;
       }
 	}
 
-	inode.size = len;
-	inode.last_modified = inode.last_accessed = time(NULL);
-	write_inode(ino, &inode);
+	inode->size = len;
+	inode->last_modified = inode->last_accessed = time(NULL);
+	write_inode(inode->ino, inode);
 
 	return 0;
 }
 
-int read_bytes(u64 ino, char **bytes, u64 *len) {
-	struct inode inode;
+int read_bytes(struct inode *inode, char **bytes, u64 *len) {
 	u64 i, tmp;
 	u8 data[BLOCK_SIZE];
 
-	if (read_inode(ino, &inode) < 0)
-		return -1;
-
-	if (inode.type != INODE_FILE)
+	if (!(inode->mode & INODE_READ)) {
+		errno = -EPERM;
 		return -2;
+	}
 
-	if (inode.blocks_count == 0)
+	if (inode->type != INODE_FILE) {
+		errno = -EINVAL;
+		return -2;
+	}
+
+	if (inode->blocks_count == 0)
 		return -1;
 
-	*len = inode.size;
+	*len = inode->size;
 	*bytes = malloc(*len);
 
-	tmp = inode.size;
-	for (i = 0; i < inode.blocks_count; i++) {
-		if (read_block(inode.blocks[i], data) < 0)
+	tmp = inode->size;
+	for (i = 0; i < inode->blocks_count; i++) {
+		if (read_block(inode->blocks[i], data) < 0)
 			return -1;
 
 		if (tmp > BLOCK_SIZE) {
@@ -331,6 +387,8 @@ int read_bytes(u64 ino, char **bytes, u64 *len) {
 			break;
 		}
 	}
+
+	inode->last_accessed = time(NULL);
 
 	return 0;
 }
@@ -399,9 +457,19 @@ int inode_path(struct inode *inode, char **path)
     _path += size;
   }
 
+	free(tmp);
   (*path)[len+d] = 0;
 
 
   return 0;
+}
+
+int ino_path(u64 ino, char **path) {
+	struct inode inode;
+
+	if (read_inode(ino, &inode) < 0)
+		return -1;
+
+	return inode_path(&inode, path);
 }
 
